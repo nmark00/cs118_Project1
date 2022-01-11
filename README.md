@@ -19,6 +19,10 @@ You are encouraged to host your code in private repositories on [GitHub](https:/
 
 `server.c` is the entry points for the server part of the project.
 
+## Testing
+
+You can test your HTTP server directly using a browser, and/or a utility like `telnet` or `nc`. Your code will be graded using a script similar to the provided `test.sh`, and you should ensure that your code passes the provided tests. The final grading will use additional hidden tests to make sure your code follows the specification.
+
 ## TODO
 
     ###########################################################
