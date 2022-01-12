@@ -23,6 +23,21 @@ You are encouraged to host your code in private repositories on [GitHub](https:/
 
 You can test your HTTP server directly using a browser, and/or a utility like `telnet` or `nc`. Your code will be graded using a script similar to the provided `test.sh`, and you should ensure that your code passes the provided tests. The final grading will use additional hidden tests to make sure your code follows the specification.
 
+The output of `test.sh` would indicate which tests passed and failed along with the total number of passing tests. You can use this information to debug your code and make sure all the tests pass.
+
+```
+Checking HTTP status code ... pass
+Checking content length ... pass
+Checking if content is correct ... pass
+Checking case insensitivity
+Checking HTTP status code ... pass
+Checking if content is correct ... pass
+Checking GET without extension
+Checking HTTP status code ... pass
+
+Passed 6 tests, 0 failed
+```
+
 ## TODO
 
     ###########################################################
