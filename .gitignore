@@ -4,3 +4,6 @@
 /project/*.dSYM
 /project/server
 /project/client
+foo.txt
+server
+server.o
