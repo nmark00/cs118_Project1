@@ -5,10 +5,11 @@
 #include <netinet/in.h>
 
 #include <string>
-#include <fstream>
-#include <filesystem>
+#include <fstream> // read file
+#include <filesystem> // get size of file
 #include <time.h> // time_t, time, tm
-#include <iomanip> //put_time
+#include <boost/filesystem/operations.hpp> // last_write_time
+#include <boost/algorithm/string.hpp> // to_lower
 
 
 #include <vector>
@@ -20,15 +21,33 @@
 
 
 using namespace std;
-using namespace std::chrono;
 
 #define MAX_CONNS 10
 #define BUF_SIZE 4096
 #define PORT_NUM 8080
 
-string getStatusline () {
-  return "200 OK";
+
+string getContentType(const string fileName) {
+  string extension = fileName.substr(fileName.find_last_of('.') + 1);
+  boost::algorithm::to_lower(extension); // make extension lowercase
+
+  string contentType;
+
+  if (extension == "html" || extension == "htm")
+    contentType = "text/html";
+  else if (extension == "txt")
+    contentType = "text/plain";
+  else if (extension == "jpg" || extension == "jpeg")
+    contentType = "image/jpeg";
+  else if (extension == "png")
+    contentType = "image/png";
+  else if (extension == "gif")
+    contentType = "image/gif";
+  else contentType = "application/octet-stream";
+
+  return contentType;
 }
+
 
 string getDatetime (time_t param = -1) {
   // if param is blank, get current time
@@ -36,51 +55,61 @@ string getDatetime (time_t param = -1) {
   struct tm * ptm;
   ptm = gmtime( &rawtime );
 
+  char buffer[128];
+  strftime(buffer, sizeof(buffer), "%a, %e %b %Y %T %Z", ptm);
+
   // Tue, 09 Aug 2011 15:44:04 GMT
-  return put_time(ptm, "%a, %e %b %Y %T %Z").str();
+  return buffer;
 }
 
-void respondToClient (string fileName,
-                      int connection,
-                      string contentType)
-{
+void responseToClient (const string fileName, const int connection) {
+
+  // Open file in READ, preserve \r\n, set cursor to end
+  ifstream myfile (fileName, ios::in|ios::binary|ios::ate);
+  bool isFound = myfile.is_open();
+
+  string statusLine = isFound ? "200 OK" : "404 Not Found";
+
   // Initial header
-  string responseHeader = "HTTP/1.1 "+ getStatusline() + "\r\n"
+  string responseHeader = "HTTP/1.1 "+ statusLine + "\r\n"
                           "Connection: close\r\n"
                           "Date:" + getDatetime() + "\r\n"
                           "Server: Nico Server\r\n";
 
-  // Open file in READ, preserve \r\n, set cursor to end
-  ifstream myfile (fileName, ios::in|ios::binary|ios::ate);
-
   // File does not exist
-  if (!myfile.is_open()) {
-    send(connection, responseHeader, responseHeader.length());
-    close(fd);
+  if (!isFound) {
+    send(connection, responseHeader.c_str(), responseHeader.size(), 0);
     return;
   }
 
+  // Get Last-Modified time
+  struct stat result;
+  stat(fileName.c_str(), & result);
+  time_t rawMtime = result.st_mtime;
 
-  auto mtime = filesystem::last_write_time(fileName);
-  time_t rawMtime = system_clock::to_time_t(file_clock::to_sys(mtime));
-
-  streampos size = myfile.tellg() //cursor is at EOF
+  streampos size = myfile.tellg(); //cursor is at EOF
 
   responseHeader += "Last-Modified: " + getDatetime(rawMtime) + "\r\n"
                     "Content-Length: " + to_string(size) + "\r\n"
-                    "Content-Type: " + contentType + "\r\n\r\n";
+                    "Content-Type: " + getContentType(fileName) + "\r\n\r\n";
 
-  // char * memblock = new char[size];
-  // file.seekg(0, ios::beg); // reset cursor to beginning
-  // file.read(memblock, size); // read and store data in memblock
+  char * memblock = new char[size];
+  myfile.seekg(0, ios::beg); // reset cursor to beginning
+  myfile.read(memblock, size); // read and store data in memblock
 
-  send(connection, responseHeader, responseHeader.length());
+  // Combine header and response body
+  string finalResponseString = responseHeader + memblock;
+  const char * finalResponse = finalResponseString.c_str();
 
-  // delete[] memblock;
+  // send response
+  send(connection, finalResponse, strlen(finalResponse), 0);
 
-  
-  
+  myfile.close();
+  delete[] memblock;
+}
 
+string getFileName(char * buffer) {
+  return "fileName";
 }
 
 int main()
@@ -98,8 +127,8 @@ int main()
   sockaddr.sin_addr.s_addr = INADDR_ANY;
   sockaddr.sin_port = htons(PORT_NUM);
 
-  // Bind port 8080 to socket
-  if (bind(sockfd, (struct sockaddr*) &sockaddr, sizeof(sockaddr)) < 0) {
+  // Bind port 8080 to socket, use std::bind() 
+  if (::bind(sockfd, (struct sockaddr*) &sockaddr, sizeof(sockaddr)) < 0) {
     cout << "Failed to bind to port 8080: " << errno << endl;
     exit(EXIT_FAILURE);
   }
