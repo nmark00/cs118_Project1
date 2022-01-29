@@ -1,47 +1,43 @@
+Nicholas Mark, 305101337
 # CS118 Project 1
 
 This is the repo for winter22 cs118 project 1.
 
-## Makefile
+## server.cpp
+1. The server creates a socket and binds it to port 8080
+1. Then it listens to the socket and accepts requests from the socket.
+1. Next the server reads from the socket and parses the HTTP request to extract the filename in the URL
+1. It then checks if that file exists in the filesystem
+    1. If the file name does, it reads the file and responds to the client with an HTTP header and the file data as the body.
+    1. If the file does not exist, the server will check if a file with the same name but an extra extension exists.
+        1. If so, it does the previous step
+        1. If not, the server responds with 404 Not Found
 
-This provides a couple make targets for things.
-By default (all target), it makes the `server` executables.
+## Troubleshooting
+1. I had issues getting the file without the extention. I ended up brute-forcing it and querying the directory for files that start the same, but contains some '.*' after.
+1. It also took me a while to figure out why my parsing function wasn't working. Turned out there were hidden whitespace characters in the HTTP header that I didn't account for.
+1. I also spent time figuring out why some files returned with the expected data, and other files didn't. It was because I was concatting the binary data with the header string, so once I separated the send() responses, everything seemed to work.
 
-It provides a `clean` target, and `tarball` target to create the submission file as well.
+## Libraries
+1. <iostream>
+1. <sys/socket.h> // create socket
+1. <cstdlib>
+1. <unistd.h>
+1. <netinet/in.h> // create socket
+1. <signal.h> //handling Ctrl-C
+1. <string>
+1. <fstream> // read file
+1. <filesystem> // get size of file
+1. <time.h> // time_t, time, tm
+1. <algorithm> // convert to lowercase
+1. <cctype> 
+1. <cstring> // strlen
+1. <sys/types.h>
+1. <sys/stat.h> // get information on files such as existence and modification time
 
-You will need to modify the `Makefile` to add your userid for the `.tar.gz` turn-in at the top of the file.
 
-## Academic Integrity Note
+## Ackowledgments
+1. I read the GeeksforGeeks page on socket programming to learn about each step in setting up a socket. I learned how to use each of the socket API's and libraries to include.
+1. I used Stefan Mai's toLower() function from Stackoverflow to convert strings to lowercase.
 
-You are encouraged to host your code in private repositories on [GitHub](https://github.com/), [GitLab](https://gitlab.com), or other places.  At the same time, you are PROHIBITED to make your code for the class project public during the class or any time after the class.  If you do so, you will be violating academic honestly policy that you have signed, as well as the student code of conduct and be subject to serious sanctions.
 
-## Provided Files
-
-`server.c` is the entry points for the server part of the project.
-
-## Testing
-
-You can test your HTTP server directly using a browser, and/or a utility like `telnet` or `nc`. Your code will be graded using a script similar to the provided `test.sh`, and you should ensure that your code passes the provided tests. The final grading will use additional hidden tests to make sure your code follows the specification.
-
-The output of `test.sh` would indicate which tests passed and failed along with the total number of passing tests. You can use this information to debug your code and make sure all the tests pass.
-
-```
-Checking HTTP status code ... pass
-Checking content length ... pass
-Checking if content is correct ... pass
-Checking case insensitivity
-Checking HTTP status code ... pass
-Checking if content is correct ... pass
-Checking GET without extension
-Checking HTTP status code ... pass
-
-Passed 6 tests, 0 failed
-```
-
-## TODO
-
-    ###########################################################
-    ##                                                       ##
-    ## REPLACE CONTENT OF THIS FILE WITH YOUR PROJECT REPORT ##
-    ##                                                       ##
-    ###########################################################
