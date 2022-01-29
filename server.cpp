@@ -84,10 +84,17 @@ string checkOtherFiles(string fileName) {
 
   // If file doesn't exist, it could just be missing an extension
   fileName = toLower(fileName);
-  cout << fileName.find_last_of('/');
+
+  string dir;
+  int index = fileName.find_last_of('/');
+  if (index > fileName.length()) // file located in '.' directory
+    dir = ".";
+  else dir = "./" + fileName.substr(0, index);
+  cout << dir <<endl;
   // Iterate through directory to find file with missing extension
-  for (const auto& entry : filesystem::directory_iterator(".")) {
-    string altFile = toLower(string(entry.path()));    
+  for (const auto& entry : filesystem::directory_iterator(dir)) {
+    string altFile = toLower(string(entry.path()));
+    cout << altFile<<endl;
     // if both files start the same way...
     if (altFile.rfind("./"+fileName, 0) == 0) {
       // if the last '.' is after the filename
