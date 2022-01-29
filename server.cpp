@@ -42,7 +42,9 @@ string toLower(string word) {
 
 string getContentType(const string fileName) {
   string extension = fileName.substr(fileName.find_last_of('.') + 1);
-  // extension = toLower(extension)
+
+  transform(extension.begin(), extension.end(), extension.begin(),
+    [](unsigned char c){ return tolower(c); });
 
   string contentType;
 
@@ -75,20 +77,46 @@ string getDatetime (time_t param = -1) {
   return buffer;
 }
 
-void responseToClient (const string fileName, const int connection) {
-  struct stat result1; stat(fileName.c_str(), &result1); cout << "mtime: "<< result1.st_mtime << endl;
-  // Open file in READ, preserve \r\n, set cursor to end
+string checkOtherFiles(string fileName) {
+  struct stat buffer; // check if file exists
+  if (stat(fileName.c_str(), & buffer) == 0)
+    return fileName;
+
+  // If file doesn't exist, it could just be missing an extension
+  fileName = toLower(fileName);
+  cout << fileName.find_last_of('/');
+  // Iterate through directory to find file with missing extension
+  for (const auto& entry : filesystem::directory_iterator(".")) {
+    string altFile = toLower(string(entry.path()));    
+    // if both files start the same way...
+    if (altFile.rfind("./"+fileName, 0) == 0) {
+      // if the last '.' is after the filename
+      if (altFile.find_last_of('.') == (fileName.length()+2)) {
+        return altFile.substr(2);
+      }
+    }
+  }
+  return "";
+}
+
+void responseToClient (string fileName, const int connection) {
+  struct stat buffer; // check if file exists
+  bool isFound = (stat(fileName.c_str(), & buffer) == 0);
+
+
+  // Open file in READ, preserve \r\n, set cursor to end 
   ifstream myfile (fileName, ios::in|ios::binary|ios::ate);
-  bool isFound = myfile.is_open();
+  streampos size = myfile.tellg(); //cursor position equals file length
+
+  isFound = isFound && (size >= 0); // size cannot be negative
 
   string statusLine = isFound ? "200 OK" : "404 Not Found";
-  cout << statusLine << endl;
+
   // Initial header
   string responseHeader = "HTTP/1.1 "+ statusLine + "\r\n"
                           "Connection: close\r\n"
                           "Date:" + getDatetime() + "\r\n"
                           "Server: Nico Server\r\n";
-  cout << responseHeader << endl;
   // File does not exist
   if (!isFound) {
     responseHeader += "\r\n";
@@ -96,14 +124,7 @@ void responseToClient (const string fileName, const int connection) {
     return;
   }
 
-  // Get Last-Modified time
-  struct stat result;
-  stat(fileName.c_str(), & result);
-  time_t rawMtime = result.st_mtime;
-
-  streampos size = myfile.tellg(); //cursor is at EOF
-
-  responseHeader += "Last-Modified: " + getDatetime(rawMtime) + "\r\n"
+  responseHeader += "Last-Modified: " + getDatetime(buffer.st_mtime) + "\r\n"
                     "Content-Length: " + to_string(size) + "\r\n"
                     "Content-Type: " + getContentType(fileName) + "\r\n\r\n";
 
@@ -121,6 +142,7 @@ void responseToClient (const string fileName, const int connection) {
   myfile.close();
   delete[] memblock;
 }
+
 string ReplaceAll(string str, const string& from, const string& to) {
     size_t start_pos = 0;
     while((start_pos = str.find(from, start_pos)) != std::string::npos) {
@@ -131,14 +153,16 @@ string ReplaceAll(string str, const string& from, const string& to) {
 }
 
 string getFileName(string buffer) {
+  // ignore everything but first line
   string line = buffer.substr(0,buffer.find_first_of("\r\n"));
+  // file name surrounded by '/' and ' '
   int beg = line.find_first_of('/');
-  int len = line.find_last_of(' ') - beg;
+  int len = line.find_last_of(' ') - beg - 1;
   string fileName = line.substr(beg+1, len);
-
+  // replace %20 with ' '
   fileName = ReplaceAll(fileName, "%20", " ");
-
-  return toLower(fileName);
+  fileName = checkOtherFiles(fileName);
+  return fileName;
 }
 
 int main()
@@ -146,7 +170,8 @@ int main()
   signal(SIGINT, sig_callback_handler);
   // Create socket
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  const int opt = 1;
+
+  const int opt = 1; // Allows socket to be reused for testing purposes
   setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
   if (sockfd == -1) {
     cout << "Failed to create socket: " << errno << endl;
@@ -182,7 +207,6 @@ int main()
       exit(EXIT_FAILURE);
     }
     string fileName = getFileName(string(buffer));
-    cout << fileName << endl;
     responseToClient(fileName, connection);
 
     shutdown(connection, 0);
