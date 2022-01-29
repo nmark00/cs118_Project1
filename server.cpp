@@ -12,8 +12,6 @@
 #include <cctype> 
 #include <cstring> // strlen
 #include <signal.h>
-// #include <stdlib.h>
-// #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -25,6 +23,7 @@ using namespace std;
 #define PORT_NUM 8080
 int sockfd, connection;
 
+// Gets called on Ctrl-C, closes socket
 void sig_callback_handler(int signum) {
   if (signum == SIGINT) {
     close(connection);
@@ -40,11 +39,12 @@ string toLower(string word) {
   return word;
 }
 
+// IN: fileName<string>
+// OUT: hard coded contentType<string>
 string getContentType(const string fileName) {
   string extension = fileName.substr(fileName.find_last_of('.') + 1);
 
-  transform(extension.begin(), extension.end(), extension.begin(),
-    [](unsigned char c){ return tolower(c); });
+  extension = toLower(extension);
 
   string contentType;
 
@@ -63,7 +63,6 @@ string getContentType(const string fileName) {
   return contentType;
 }
 
-
 string getDatetime (time_t param = -1) {
   // if param is blank, get current time
   time_t rawtime = (rawtime == -1) ? time( &rawtime ) : param;
@@ -77,6 +76,63 @@ string getDatetime (time_t param = -1) {
   return buffer;
 }
 
+// Searches filesystem for specified file and sends contents to socket
+void responseToClient (string fileName, const int connection) {
+  struct stat buffer; // check if file exists
+  bool isFound = (stat(fileName.c_str(), & buffer) == 0);
+
+
+  // Open file in READ, preserve \r\n, set cursor to end 
+  ifstream myfile (fileName, ios::in|ios::binary|ios::ate);
+  streampos size = myfile.tellg(); //cursor position equals file length
+
+  isFound = isFound && (size >= 0); // size cannot be negative
+
+  string statusLine = isFound ? "200 OK" : "404 Not Found";
+
+  // Initial header
+  string responseHeader = "HTTP/1.1 "+ statusLine + "\r\n"
+                          "Connection: close\r\n"
+                          "Date:" + getDatetime() + "\r\n"
+                          "Server: Nico Server\r\n";
+  // File does not exist
+  if (!isFound) {
+    string content = "404 Not Found";
+    responseHeader += "Content-Length: " + to_string(content.length()) + "\r\n"
+                      "Content-Type: " + "text/plain" + "\r\n\r\n" + content;
+    send(connection, responseHeader.c_str(), responseHeader.size(), 0);
+    return;
+  }
+
+  responseHeader += "Last-Modified: " + getDatetime(buffer.st_mtime) + "\r\n"
+                    "Content-Length: " + to_string(size) + "\r\n"
+                    "Content-Type: " + getContentType(fileName) + "\r\n\r\n";
+
+  char * memblock = new char[size];
+  myfile.seekg(0, ios::beg); // reset cursor to beginning
+  myfile.read(memblock, size); // read and store data in memblock
+
+
+  // send response
+  send(connection, responseHeader.c_str(), responseHeader.size(), 0);
+  send(connection, memblock, size, 0);
+  cout << "done."<< endl;
+  
+  myfile.close();
+  delete[] memblock;
+}
+
+string ReplaceAll(string str, const string& from, const string& to) {
+    size_t start_pos = 0;
+    while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+    }
+    return str;
+}
+
+// If file exists, do nothing
+// Else, iterate through filesystem to check if the same file w/ an extension exists
 string checkOtherFiles(string fileName) {
   struct stat buffer; // check if file exists
   if (stat(fileName.c_str(), & buffer) == 0)
@@ -106,59 +162,7 @@ string checkOtherFiles(string fileName) {
   return "";
 }
 
-void responseToClient (string fileName, const int connection) {
-  struct stat buffer; // check if file exists
-  bool isFound = (stat(fileName.c_str(), & buffer) == 0);
-
-
-  // Open file in READ, preserve \r\n, set cursor to end 
-  ifstream myfile (fileName, ios::in|ios::binary|ios::ate);
-  streampos size = myfile.tellg(); //cursor position equals file length
-
-  isFound = isFound && (size >= 0); // size cannot be negative
-
-  string statusLine = isFound ? "200 OK" : "404 Not Found";
-
-  // Initial header
-  string responseHeader = "HTTP/1.1 "+ statusLine + "\r\n"
-                          "Connection: close\r\n"
-                          "Date:" + getDatetime() + "\r\n"
-                          "Server: Nico Server\r\n";
-  // File does not exist
-  if (!isFound) {
-    responseHeader += "\r\n";
-    send(connection, responseHeader.c_str(), responseHeader.size(), 0);
-    return;
-  }
-
-  responseHeader += "Last-Modified: " + getDatetime(buffer.st_mtime) + "\r\n"
-                    "Content-Length: " + to_string(size) + "\r\n"
-                    "Content-Type: " + getContentType(fileName) + "\r\n\r\n";
-
-  char * memblock = new char[size];
-  myfile.seekg(0, ios::beg); // reset cursor to beginning
-  myfile.read(memblock, size); // read and store data in memblock
-
-  // Combine header and response body
-  string finalResponseString = responseHeader + memblock;
-  const char * finalResponse = finalResponseString.c_str();
-
-  // send response
-  send(connection, finalResponse, strlen(finalResponse), 0);
-
-  myfile.close();
-  delete[] memblock;
-}
-
-string ReplaceAll(string str, const string& from, const string& to) {
-    size_t start_pos = 0;
-    while((start_pos = str.find(from, start_pos)) != std::string::npos) {
-        str.replace(start_pos, from.length(), to);
-        start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-    }
-    return str;
-}
-
+// Parse HTML request for the file name specified in the URL
 string getFileName(string buffer) {
   // ignore everything but first line
   string line = buffer.substr(0,buffer.find_first_of("\r\n"));
@@ -169,6 +173,7 @@ string getFileName(string buffer) {
   // replace %20 with ' '
   fileName = ReplaceAll(fileName, "%20", " ");
   fileName = checkOtherFiles(fileName);
+  cout << "official filename sent to responseToClient: "<< fileName<< endl;
   return fileName;
 }
 
